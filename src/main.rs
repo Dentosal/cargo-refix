@@ -19,6 +19,8 @@ use std::{
 
 use clap::Parser;
 
+use crate::apply::FileChangeSet;
+
 fn main() {
     let mut args = env::args_os().peekable();
 
@@ -52,6 +54,7 @@ fn main() {
     dbg!(stderr);
 
     let mut list_summary: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut changeset = Vec::new();
 
     for line in output.stdout.split(|c| *c == b'\n') {
         if line.trim_ascii().is_empty() {
@@ -75,8 +78,14 @@ fn main() {
                     continue;
                 }
 
-                if args.operation.preview(&message).is_err() {
-                    break;
+                match args.operation.compute_diffs(&message) {
+                    Ok(changes) => {
+                        args.operation.preview(&message, &changes);
+                        changeset.extend(changes.into_iter());
+                    }
+                    Err(()) => {
+                        break;
+                    }
                 }
 
                 if args.single {
@@ -94,5 +103,15 @@ fn main() {
             }
             println!();
         }
+    }
+
+    if args.write {
+        // TODO: dirty check
+        let amount = changeset.len();
+        let fcs = FileChangeSet::group(changeset);
+        println!("dry-run: would write {} to {} files", fcs.len(), fcs.len());
+        // for fc in fcs {
+        //     fc.write().unwrap();
+        // }
     }
 }

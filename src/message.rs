@@ -136,8 +136,8 @@ pub struct Span {
 impl Span {
     pub fn outer_byte_range(&self) -> ops::Range<usize> {
         let len = self.raw_text().len();
-        let s = self.byte_start - self.text[0].highlight_start;
-        s .. s + len
+        let s = self.byte_start - self.text[0].highlighted_span().start;
+        s..s + len
     }
 
     pub fn raw_text(&self) -> String {

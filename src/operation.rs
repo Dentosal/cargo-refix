@@ -295,10 +295,6 @@ impl Operation {
         Ok(())
     }
 
-    pub fn apply(&self, target: &message::CompilerMessage) {
-        todo!();
-    }
-
     pub fn compute_diffs(&self, target: &message::CompilerMessage) -> Result<Vec<Change>, ()> {
         let mut changes = Vec::new();
         'spans: for SpanAndSuggestions {
@@ -323,6 +319,7 @@ impl Operation {
                             selection.end = selection.start + overlap;
                         } else if s_range.start <= selection.end {
                             selection.end = s_range.start;
+                            selection.start = selection.start.min(selection.end);
                         }
 
                         new_text.replace_range(s_range, &s_text);
@@ -352,20 +349,18 @@ impl Operation {
         Ok(changes)
     }
 
-    pub fn preview(&self, target: &message::CompilerMessage) -> Result<(), ()> {
-        let diffs = self.compute_diffs(target)?;
-        assert_eq!(diffs.len(), 1); // TODO
-
-        for span in &target.spans {
+    pub fn preview(&self, target: &message::CompilerMessage, changes: &[Change]) {
+        for (span, change) in target.spans.iter().zip(changes) {
             print!("{}:{}:", span.file_name, span.line_start);
             if let Some(label) = span.label.as_ref() {
                 print!(" {}", label);
             }
             println!();
-            show_text_diff(&span.raw_text(), &String::from_utf8_lossy(&diffs[0].patch.bytes));
+            show_text_diff(
+                &span.raw_text(),
+                &String::from_utf8_lossy(&change.patch.bytes),
+            );
         }
-
-        Ok(())
     }
 }
 
