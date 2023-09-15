@@ -7,7 +7,8 @@ use similar::{ChangeTag, TextDiff};
 use strum::EnumProperty;
 
 use crate::{
-    message, selector,
+    message::{self, SpanAndSuggestions},
+    selector,
     text::{find_matching_paren, template},
 };
 
@@ -258,6 +259,10 @@ impl ExecError {
 
 #[derive(Debug, Clone, Args)]
 pub struct Operation {
+    /// Apply suggestion provided by rustc first
+    #[arg(short = 'a', long = "auto", alias = "suggestion")]
+    suggestion: bool,
+
     /// Sequence of operations to apply
     ops: Vec<String>,
 }
@@ -294,28 +299,52 @@ impl Operation {
     }
 
     pub fn preview(&self, target: &message::CompilerMessage) {
-        'spans: for span in &target.spans {
-            if span.is_primary {
-                println!("{}:{}", span.file_name, span.line_start);
-                for text in &span.text {
-                    let mut new = String::new();
-                    for part in span.text.iter() {
-                        let selection = part.highlighted_span();
+        'spans: for SpanAndSuggestions {
+            primary: span,
+            suggestions,
+        } in target.spans_with_suggestions()
+        {
+            print!("{}:{}:", span.file_name, span.line_start);
+            if let Some(label) = span.label.as_ref() {
+                print!(" {}", label);
+            }
+            println!();
+            for text in &span.text {
+                let mut new = String::new();
+                for part in span.text.iter() {
+                    let mut selection = part.highlighted_span();
 
-                        let mut new_text = part.text.clone();
-                        if let Err(err) = self.run(&mut new_text, selection.clone()) {
-                            println!(" Execution failed: {:?}", err);
-                            if err.stop_all() {
-                                return;
-                            } else {
-                                continue 'spans;
+                    let mut new_text = part.text.clone();
+
+                    if self.suggestion {
+                        for (s_range, s_text, _) in suggestions.clone().into_iter().rev() {
+                            if s_range.end <= selection.start {
+                                selection.start -= s_text.len();
+                                selection.end -= s_text.len();
+                            } else if s_range.end <= selection.end {
+                                let overlap = selection.end - s_range.end;
+                                selection.start = s_range.start;
+                                selection.end = selection.start + overlap;
+                            } else if s_range.start <= selection.end {
+                                selection.end = s_range.start;
                             }
+
+                            new_text.replace_range(s_range, &s_text);
                         }
-                        new.push_str(&new_text);
                     }
 
-                    show_text_diff(&text.text, &new);
+                    if let Err(err) = self.run(&mut new_text, selection.clone()) {
+                        println!(" Execution failed: {:?}", err);
+                        if err.stop_all() {
+                            return;
+                        } else {
+                            continue 'spans;
+                        }
+                    }
+                    new.push_str(&new_text);
                 }
+
+                show_text_diff(&text.text, &new);
             }
         }
     }

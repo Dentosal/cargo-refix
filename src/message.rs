@@ -1,3 +1,5 @@
+//! https://doc.rust-lang.org/rustc/json.html
+
 #![allow(dead_code)]
 
 use colored::Colorize;
@@ -26,6 +28,8 @@ pub struct CompilerMessage {
     pub message: String,
     pub spans: Vec<Span>,
 
+    pub children: Vec<CompilerMessage>,
+
     #[serde(flatten)]
     other: HashMap<String, serde_json::Value>,
 }
@@ -44,6 +48,50 @@ impl CompilerMessage {
             .flatten()
             .map(|code| code.as_str())
     }
+
+    pub fn primary_spans(&self) -> impl Iterator<Item = &Span> + '_ {
+        self.spans.iter().filter(|s| s.is_primary)
+    }
+
+    /// Help items containsing suggestions
+    pub fn help_items(&self) -> impl Iterator<Item = &Span> + '_ {
+        self.children
+            .iter()
+            .filter(|child| child.level == "help")
+            .flat_map(|child| {
+                child
+                    .spans
+                    .iter()
+                    .filter(|span| span.suggested_replacement.is_some())
+            })
+    }
+
+    pub fn spans_with_suggestions(&self) -> impl Iterator<Item = SpanAndSuggestions> + '_ {
+        self.primary_spans().map(|primary| {
+            let mut suggestions: Vec<_> = self
+                .help_items()
+                .filter(|help| primary.raw_text() == help.raw_text() && help.text.len() == 1)
+                .map(|s| {
+                    let replacement = s.suggested_replacement.as_ref().unwrap();
+                    let applicability = s
+                        .suggestion_applicability
+                        .unwrap_or(SuggestionApplicability::Unspecified);
+                    (
+                        s.text[0].highlighted_span(),
+                        replacement.clone(),
+                        applicability,
+                    )
+                })
+                .collect();
+
+            suggestions.sort_by_key(|(r, _, _)| r.start);
+
+            SpanAndSuggestions {
+                primary: primary.clone(),
+                suggestions,
+            }
+        })
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -51,7 +99,20 @@ pub struct CompilerMessageCode {
     pub code: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone)]
+pub struct SpanAndSuggestions {
+    pub primary: Span,
+    pub suggestions: Vec<(ops::Range<usize>, String, SuggestionApplicability)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize)]
+pub enum SuggestionApplicability {
+    MachineApplicable,
+    MaybeIncorrect,
+    HasPlaceholders,
+    Unspecified,
+}
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct Span {
     pub file_name: String,
     pub byte_start: usize,
@@ -65,8 +126,17 @@ pub struct Span {
     pub label: Option<String>,
     pub is_primary: bool,
 
+    pub suggested_replacement: Option<String>,
+    pub suggestion_applicability: Option<SuggestionApplicability>,
+
     #[serde(flatten)]
     other: HashMap<String, serde_json::Value>,
+}
+
+impl Span {
+    pub fn raw_text(&self) -> String {
+        self.text.iter().map(|text| text.text.clone()).collect()
+    }
 }
 
 impl Display for Span {
@@ -78,7 +148,7 @@ impl Display for Span {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct SpanText {
     pub highlight_end: usize,
     pub highlight_start: usize,
