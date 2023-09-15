@@ -2,7 +2,6 @@
 
 #![allow(dead_code)]
 
-use colored::Colorize;
 use std::{collections::HashMap, fmt::Display, ops};
 
 use crate::text::underline_span;

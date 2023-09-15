@@ -13,8 +13,8 @@ use std::{
     env,
     ffi::{OsStr, OsString},
     iter,
-    path::{Path, PathBuf},
-    process::{Command, ExitStatus},
+    path::PathBuf,
+    process::Command,
 };
 
 use clap::Parser;

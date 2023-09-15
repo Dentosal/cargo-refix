@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    fs::{self, File},
+    fs::{self},
     ops,
     path::PathBuf,
 };

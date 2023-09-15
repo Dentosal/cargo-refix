@@ -9,7 +9,6 @@ use strum::EnumProperty;
 use crate::{
     apply::{Change, Patch},
     message::{self, SpanAndSuggestions},
-    selector,
     text::{find_matching_paren, template},
 };
 

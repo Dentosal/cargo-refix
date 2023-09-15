@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops};
+use std::ops;
 
 use colored::Colorize;
 use regex::Regex;
