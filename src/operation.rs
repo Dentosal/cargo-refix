@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops, str::FromStr};
+use std::{collections::VecDeque, ops, path::PathBuf, str::FromStr};
 
 use clap::Args;
 use colored::Colorize;
@@ -7,6 +7,7 @@ use similar::{ChangeTag, TextDiff};
 use strum::EnumProperty;
 
 use crate::{
+    apply::{Change, Patch},
     message::{self, SpanAndSuggestions},
     selector,
     text::{find_matching_paren, template},
@@ -298,55 +299,73 @@ impl Operation {
         todo!();
     }
 
-    pub fn preview(&self, target: &message::CompilerMessage) {
+    pub fn compute_diffs(&self, target: &message::CompilerMessage) -> Result<Vec<Change>, ()> {
+        let mut changes = Vec::new();
         'spans: for SpanAndSuggestions {
             primary: span,
             suggestions,
         } in target.spans_with_suggestions()
         {
+            let mut new = String::new();
+            for part in span.text.iter() {
+                let mut selection = part.highlighted_span();
+
+                let mut new_text = part.text.clone();
+
+                if self.suggestion {
+                    for (s_range, s_text, _) in suggestions.clone().into_iter().rev() {
+                        if s_range.end <= selection.start {
+                            selection.start -= s_text.len();
+                            selection.end -= s_text.len();
+                        } else if s_range.end <= selection.end {
+                            let overlap = selection.end - s_range.end;
+                            selection.start = s_range.start;
+                            selection.end = selection.start + overlap;
+                        } else if s_range.start <= selection.end {
+                            selection.end = s_range.start;
+                        }
+
+                        new_text.replace_range(s_range, &s_text);
+                    }
+                }
+
+                if let Err(err) = self.run(&mut new_text, selection.clone()) {
+                    println!("{}:{}:", span.file_name, span.line_start);
+                    println!(" Execution failed: {:?}", err);
+                    if err.stop_all() {
+                        return Err(());
+                    } else {
+                        continue 'spans;
+                    }
+                }
+                new.push_str(&new_text);
+            }
+
+            changes.push(Change {
+                file: PathBuf::from(&span.file_name),
+                patch: Patch {
+                    location: span.outer_byte_range(),
+                    bytes: new.bytes().collect(),
+                },
+            });
+        }
+        Ok(changes)
+    }
+
+    pub fn preview(&self, target: &message::CompilerMessage) -> Result<(), ()> {
+        let diffs = self.compute_diffs(target)?;
+        assert_eq!(diffs.len(), 1); // TODO
+
+        for span in &target.spans {
             print!("{}:{}:", span.file_name, span.line_start);
             if let Some(label) = span.label.as_ref() {
                 print!(" {}", label);
             }
             println!();
-            for text in &span.text {
-                let mut new = String::new();
-                for part in span.text.iter() {
-                    let mut selection = part.highlighted_span();
-
-                    let mut new_text = part.text.clone();
-
-                    if self.suggestion {
-                        for (s_range, s_text, _) in suggestions.clone().into_iter().rev() {
-                            if s_range.end <= selection.start {
-                                selection.start -= s_text.len();
-                                selection.end -= s_text.len();
-                            } else if s_range.end <= selection.end {
-                                let overlap = selection.end - s_range.end;
-                                selection.start = s_range.start;
-                                selection.end = selection.start + overlap;
-                            } else if s_range.start <= selection.end {
-                                selection.end = s_range.start;
-                            }
-
-                            new_text.replace_range(s_range, &s_text);
-                        }
-                    }
-
-                    if let Err(err) = self.run(&mut new_text, selection.clone()) {
-                        println!(" Execution failed: {:?}", err);
-                        if err.stop_all() {
-                            return;
-                        } else {
-                            continue 'spans;
-                        }
-                    }
-                    new.push_str(&new_text);
-                }
-
-                show_text_diff(&text.text, &new);
-            }
+            show_text_diff(&span.raw_text(), &String::from_utf8_lossy(&diffs[0].patch.bytes));
         }
+
+        Ok(())
     }
 }
 

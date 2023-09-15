@@ -1,5 +1,7 @@
-#![feature(byte_slice_trim_ascii)]
+#![feature(byte_slice_trim_ascii, array_windows)]
+#![deny(unused_must_use)]
 
+mod apply;
 mod args;
 mod message;
 mod operation;
@@ -73,7 +75,9 @@ fn main() {
                     continue;
                 }
 
-                args.operation.preview(&message);
+                if args.operation.preview(&message).is_err() {
+                    break;
+                }
 
                 if args.single {
                     break;
