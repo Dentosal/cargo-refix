@@ -105,13 +105,18 @@ fn main() {
         }
     }
 
+    let amount = changeset.len();
+    let fcs = FileChangeSet::group(changeset);
+    if args.write {
+        print!("writing ");
+    } else {
+        print!("dry-run: would write ");
+    }
+    println!("{} to {} files", amount, fcs.len());
     if args.write {
         // TODO: dirty check
-        let amount = changeset.len();
-        let fcs = FileChangeSet::group(changeset);
-        println!("dry-run: would write {} to {} files", fcs.len(), fcs.len());
-        // for fc in fcs {
-        //     fc.write().unwrap();
-        // }
+        for fc in fcs {
+            fc.write().unwrap();
+        }
     }
 }
