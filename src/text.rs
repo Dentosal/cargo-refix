@@ -80,7 +80,7 @@ pub fn find_matching_paren(context: &str, index: usize) -> Option<usize> {
 
 /// Replaces templates in form `$name` or `${name}`, using a resolver function.
 /// If resolver returns `Ok(None)`, the template is left as-is.
-pub fn template<F>(mut template: &str, mut resolver: F) -> Result<String, ExecError>
+pub fn template<F>(template: &str, mut resolver: F) -> Result<String, ExecError>
 where
     F: FnMut(&str) -> Result<Option<String>, ExecError>,
 {
