@@ -56,7 +56,7 @@ impl FileChangeSet {
         }
 
         // Do in-file ordering for each file
-        for patches in change_sets.values_mut() {
+        for (file, patches) in change_sets.iter_mut() {
             // Do a stable sort so we preserve order if it matters
             patches.sort_by_key(|patch| patch.location.start);
 
@@ -72,7 +72,10 @@ impl FileChangeSet {
             for [a, b] in patches.array_windows() {
                 assert!(
                     a.location.end <= b.location.start,
-                    "Overlapping patches are not allowed"
+                    "Overlapping patches are not allowed: {:?} {:?} {:?}",
+                    file,
+                    a.location,
+                    b.location
                 );
             }
         }
